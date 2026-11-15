@@ -1,0 +1,65 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+    function me() { return request.auth.uid; }
+    function signed() { return request.auth != null; }
+    function adm() { return get(/databases/$(db)/documents/admins/$(me())); }
+    function isAdmin() { return signed() && exists(/databases/$(db)/documents/admins/$(me())) && adm().data.active == true; }
+    function can(p) { return isAdmin() && (adm().data.role == 'main' || p in adm().data.perms); }
+    function isMain() { return isAdmin() && adm().data.role == 'main'; }
+    function blocked() { return get(/databases/$(db)/documents/users/$(me())).data.blocked == true; }
+
+    match /admins/{id} {
+      allow read: if signed() && (me() == id || isMain());
+      allow write: if isMain();
+    }
+    match /users/{id} {
+      allow read: if signed();
+      allow create: if me() == id && request.resource.data.wallet == 0 && request.resource.data.blocked == false
+        && request.resource.data.kills == 0 && request.resource.data.wins == 0 && request.resource.data.played == 0;
+      // player may edit profile fields, or only DECREASE own wallet (fee / withdrawal)
+      allow update: if (me() == id && !blocked() && (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','ffUid','ffName','photo'])
+          || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['wallet'])
+              && request.resource.data.wallet >= 0 && request.resource.data.wallet < resource.data.wallet)))
+        || can('players') || can('payments') || can('results');
+      allow delete: if can('players');
+    }
+    match /matches/{m} {
+      allow read: if signed();
+      allow create, delete: if can('matches');
+      allow update: if can('matches') || can('results')
+        || (signed() && !blocked() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['joined'])
+            && request.resource.data.joined == resource.data.joined + 1 && request.resource.data.joined <= resource.data.slots);
+      match /players/{u} {
+        allow read: if signed();
+        allow create: if me() == u && !blocked();
+        allow delete: if me() == u || can('matches');
+        allow update: if can('matches') || can('results');
+      }
+      match /private/room {
+        allow read: if isAdmin() || exists(/databases/$(db)/documents/matches/$(m)/players/$(me()));
+        allow write: if can('matches');
+      }
+    }
+    match /deposits/{d} {
+      allow create: if signed() && !blocked() && request.resource.data.uid == me() && request.resource.data.status == 'pending';
+      allow read: if signed() && (resource.data.uid == me() || can('payments'));
+      allow update: if can('payments');
+    }
+    match /withdrawals/{d} {
+      allow create: if signed() && !blocked() && request.resource.data.uid == me() && request.resource.data.status == 'pending';
+      allow read: if signed() && (resource.data.uid == me() || can('payments'));
+      allow update: if can('payments');
+    }
+    match /announcements/{a} {
+      allow read: if signed();
+      allow write: if can('matches') || can('players');
+    }
+    match /logs/{l} {
+      allow create: if isAdmin() && request.resource.data.uid == me();
+      allow read: if isMain();
+    }
+  }
+}
+// Storage rules: allow write to /shots/{uid}/** and /avatars/{uid}/** only when request.auth.uid == uid; read only for that uid or admins.
