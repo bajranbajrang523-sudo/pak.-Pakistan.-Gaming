@@ -1,0 +1,164 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PAK PAKISTAN TOURNAMENT</title>
+<style>
+:root{--bg:#050b12;--card:#0d1b27;--g:#00a550;--c:#00e5ff;--b:#1e6bff;--t:#e8f4ff;--m:#7f9bb0}
+body.light{--bg:#eef6fb;--card:#fff;--t:#0a1a26;--m:#4a6070}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--t);font:15px system-ui,sans-serif;padding:56px 0 64px}
+header,nav{position:fixed;left:0;right:0;background:#07131d;display:flex;align-items:center;z-index:5;padding:0 12px}
+header{top:0;height:52px;border-bottom:2px solid var(--g);gap:8px}header b{flex:1;background:linear-gradient(90deg,var(--g),var(--c));-webkit-background-clip:text;color:transparent;font-size:14px}
+nav{bottom:0;height:58px;justify-content:space-around;border-top:2px solid var(--b)}nav a{color:var(--m);text-align:center;font-size:12px;cursor:pointer;flex:1;padding:8px}nav a.on{color:var(--c)}
+main{max-width:640px;margin:auto;padding:12px;animation:f .3s}@keyframes f{from{opacity:0;transform:translateY(8px)}}
+.card{background:var(--card);border:1px solid #1b3446;border-radius:12px;padding:12px;margin:10px 0}
+button,.btn{background:linear-gradient(90deg,var(--g),var(--b));color:#fff;border:0;border-radius:8px;padding:9px 14px;font-weight:600;cursor:pointer;margin:2px}
+button.s{background:#27394a}button.r{background:#c0392b}
+input,select,textarea{width:100%;padding:10px;margin:4px 0;background:#0a1620;color:#e8f4ff;border:1px solid #2a4a60;border-radius:8px}
+.g{display:grid;grid-template-columns:1fr 1fr;gap:8px}.n{font-size:22px;color:var(--c);font-weight:700}.m{color:var(--m);font-size:12px}
+.tag{background:#12384a;color:var(--c);border-radius:6px;padding:2px 7px;font-size:11px;margin-right:4px}
+#ban{height:110px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;transition:background .6s}
+.menu{position:fixed;top:52px;right:0;background:#07131d;width:210px;z-index:6;border:1px solid var(--g);display:none}.menu a{display:block;padding:12px;cursor:pointer}
+#toast{position:fixed;top:60px;left:50%;transform:translateX(-50%);background:var(--g);padding:8px 16px;border-radius:8px;z-index:9;display:none}
+</style></head><body>
+<div id="toast"></div><div id="app"></div>
+<script src="https://cdn.jsdelivr.net/npm/firebase@10.12.2/firebase-app-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/firebase@10.12.2/firebase-auth-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/firebase@10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/firebase@10.12.2/firebase-storage-compat.js"></script>
+<script>
+// 1) PASTE YOUR FIREBASE CONFIG HERE
+const CFG={apiKey:"",authDomain:"",projectId:"",storageBucket:"",messagingSenderId:"",appId:""};
+firebase.initializeApp(CFG);
+const A=firebase.auth(),D=firebase.firestore(),S=firebase.storage(),TS=()=>firebase.firestore.FieldValue.serverTimestamp(),INC=firebase.firestore.FieldValue.increment;
+const $=s=>document.querySelector(s),app=$('#app');
+let U=null,P=null,AD=null,tab='home',atab='matches',sub=null;
+const toast=t=>{const e=$('#toast');e.textContent=t;e.style.display='block';setTimeout(()=>e.style.display='none',2800)};
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const perm=p=>AD&&AD.active&&(AD.role==='main'||(AD.perms||[]).includes(p));
+const log=(a,d)=>D.collection('logs').add({uid:U.uid,admin:AD.name,action:a,detail:d||'',at:TS()}).catch(()=>{});
+const run=async f=>{try{await f()}catch(e){toast(e.message)}};
+const q=async(c,o)=>(await (o?D.collection(c).orderBy(o,'desc'):D.collection(c)).limit(100).get()).docs.map(d=>({id:d.id,...d.data()}));
+const ban=['Daily Solo Cup','Squad Showdown','Weekend Booyah','Special Event','Pak Pride League'],bc=['#006b33','#0a6a8a','#1e4bcc','#007a5e','#0b5d7a'];
+
+A.onAuthStateChanged(async u=>{
+ U=u;if(!u){P=AD=null;return authUI()}
+ const ar=await D.doc('admins/'+u.uid).get().catch(()=>null);AD=ar&&ar.exists?ar.data():null;
+ if(AD&&!AD.active){await A.signOut();return toast('Admin account deactivated')}
+ const pr=D.doc('users/'+u.uid);let s=await pr.get();
+ if(!s.exists&&!AD){const n=localStorage.pend?JSON.parse(localStorage.pend):{};await pr.set({name:n.name||u.email.split('@')[0],email:u.email,ffUid:n.ffUid||'',ffName:n.ffName||'',wallet:0,coins:0,kills:0,wins:0,played:0,blocked:false,verified:false,ref:u.uid.slice(0,6).toUpperCase(),created:TS()});s=await pr.get()}
+ P=s.exists?s.data():null;
+ if(P&&P.blocked){await A.signOut();return toast('Your account is blocked')}
+ AD?(atab=perm('matches')?'matches':perm('payments')?'payments':perm('players')?'players':'admins',adminUI()):go('home');
+});
+function authUI(){
+ app.innerHTML=`<main><div class="card" style="text-align:center"><div style="font-size:42px">🇵🇰</div><h2 style="color:var(--c)">PAK PAKISTAN TOURNAMENT</h2><div class="m">Free Fire Only</div></div>
+ <div class="card"><div id="reg" style="display:none"><input id="rn" placeholder="Full name"><input id="ru" placeholder="Free Fire UID"><input id="rg" placeholder="Free Fire in-game name"></div>
+ <input id="em" type="email" placeholder="Email"><input id="pw" type="password" placeholder="Password (min 6)">
+ <button id="go">Login</button><button class="s" id="sw">Create account</button><button class="s" id="fp">Forgot password</button></div></main>`;
+ let reg=false;
+ $('#sw').onclick=()=>{reg=!reg;$('#reg').style.display=reg?'block':'none';$('#go').textContent=reg?'Register':'Login';$('#sw').textContent=reg?'Have an account? Login':'Create account'};
+ $('#go').onclick=()=>run(async()=>{const e=$('#em').value.trim(),p=$('#pw').value;
+  if(reg){if(!/^\d{6,12}$/.test($('#ru').value))throw Error('Enter a valid Free Fire UID (6-12 digits)');
+   localStorage.pend=JSON.stringify({name:$('#rn').value,ffUid:$('#ru').value,ffName:$('#rg').value});await A.createUserWithEmailAndPassword(e,p)}
+  else await A.signInWithEmailAndPassword(e,p)});
+ $('#fp').onclick=()=>run(async()=>{await A.sendPasswordResetEmail($('#em').value.trim());toast('Reset link sent to your email')});
+}
+function shell(body){
+ app.innerHTML=`<header><span>🇵🇰</span><b>PAK PAKISTAN TOURNAMENT</b><button class="s" onclick="go('profile')">👤</button><button class="s" onclick="document.querySelector('.menu').style.display='block'">☰</button></header>
+ <div class="menu" onclick="this.style.display='none'">${['rules:Rules','support:Support','about:About Us','history:Match History','settings:Settings','privacy:Privacy Policy','terms:Terms'].map(x=>`<a onclick="go('${x.split(':')[0]}')">${x.split(':')[1]}</a>`).join('')}<a onclick="A.signOut()">Logout</a></div>
+ <main>${body}</main><nav>${[['home','🏠','Home'],['matches','🎮','Matches'],['wallet','💰','Wallet'],['rank','🏆','Ranking'],['profile','👤','Profile']].map(x=>`<a class="${tab==x[0]?'on':''}" onclick="go('${x[0]}')">${x[1]}<br>${x[2]}</a>`).join('')}</nav>`;
+}
+window.go=async t=>{tab=t;shell('<div class="m">Loading…</div>');await run(async()=>{const h=await V[t]();$('main').innerHTML=h;if(t=='home')rot()})};
+let rt;function rot(){let i=0;const e=$('#ban');if(!e)return;clearInterval(rt);const s=()=>{e.style.background=bc[i%5];e.textContent=(window.BN&&BN[i%5])||ban[i%5];i++};s();rt=setInterval(s,3000)}
+const stat=(l,v)=>`<div class="card"><div class="n">${v}</div><div class="m">${l}</div></div>`;
+const matchCard=(m,j)=>`<div class="card"><b>${esc(m.name)}</b> <span class="tag">${m.status}</span><br><span class="tag">${m.type}</span><span class="tag">${m.map}</span><span class="tag">${m.fee>0?'Paid Rs '+m.fee:'Free'}</span>
+<div class="m">${esc(m.date)} ${esc(m.time)} · Prize Rs ${m.prize} · Slots ${m.joined}/${m.slots}</div>
+${j?`<button class="s" onclick="room('${m.id}')">Room ID / Password</button><button class="r" onclick="leave('${m.id}',${m.fee})">Cancel</button>`:m.status=='upcoming'&&m.joined<m.slots?`<button onclick="join('${m.id}',${m.fee})">Join</button>`:''}</div>`;
+const V={
+ async home(){const [m,a]=await Promise.all([q('matches'),q('announcements','at')]);const u=(await D.collection('users').get()).size;window.BN=null;
+  return `<div id="ban"></div><div class="g">${stat('Players',u)}${stat('Matches',m.length)}${stat('Upcoming',m.filter(x=>x.status=='upcoming').length)}${stat('Live',m.filter(x=>x.status=='live').length)}${stat('Completed',m.filter(x=>x.status=='completed').length)}${stat('Prize Pool','Rs '+m.reduce((s,x)=>s+(+x.prize||0),0))}</div>
+  <button style="width:100%" onclick="go('matches')">⚡ Quick Join</button><h3>Announcements</h3>${a.map(x=>`<div class="card">${esc(x.text)}</div>`).join('')||'<div class="m">None yet</div>'}`},
+ async matches(){const m=(await q('matches','created')).filter(x=>x.published!==false);const mine=await Promise.all(m.map(x=>D.doc(`matches/${x.id}/players/${U.uid}`).get()));
+  return `<h3>Matches</h3>${m.map((x,i)=>matchCard(x,mine[i].exists)).join('')||'<div class="m">No matches</div>'}`},
+ async wallet(){const p=(await D.doc('users/'+U.uid).get()).data(),dp=(await q('deposits')).filter(x=>x.uid==U.uid),wd=(await q('withdrawals')).filter(x=>x.uid==U.uid);
+  return `<div class="card"><div class="m">Balance</div><div class="n">Rs ${p.wallet}</div></div>
+  <div class="card"><b>Add Money</b><select id="dm"><option>Easypaisa</option><option>JazzCash</option><option>Paytm</option></select><input id="da" type="number" placeholder="Amount"><input id="dt" placeholder="Transaction ID"><label class="m">Payment screenshot</label><input id="df" type="file" accept="image/*"><button onclick="dep()">Submit deposit request</button></div>
+  <div class="card"><b>Withdraw</b><select id="wm"><option>Easypaisa</option><option>JazzCash</option><option>Paytm</option></select><input id="wa" type="number" placeholder="Amount"><input id="wn" placeholder="Account number"><button onclick="wdr()">Request withdrawal</button></div>
+  <h3>Transactions</h3>${[...dp.map(x=>({...x,k:'Deposit'})),...wd.map(x=>({...x,k:'Withdraw'}))].map(x=>`<div class="card">${x.k} Rs ${x.amount} via ${x.method} <span class="tag">${x.status}</span></div>`).join('')||'<div class="m">No transactions</div>'}`},
+ async rank(){const u=(await D.collection('users').orderBy('kills','desc').limit(50).get()).docs.map(d=>d.data());
+  return `<h3>Top Players</h3>${u.map((x,i)=>`<div class="card">#${i+1} <b>${esc(x.ffName||x.name)}</b> ${x.verified?'✅':''}<div class="m">Kills ${x.kills} · Wins ${x.wins} · Played ${x.played} · Win% ${x.played?Math.round(x.wins*100/x.played):0}</div></div>`).join('')}`},
+ async profile(){const p=(await D.doc('users/'+U.uid).get()).data();
+  return `<div class="card"><b>${esc(p.name)}</b> ${p.verified?'✅ Verified':''}<div class="m">${esc(p.email)} · Referral code ${p.ref} · Coins ${p.coins}</div>
+  <input id="pn" value="${esc(p.name)}" placeholder="Name"><input id="pu" value="${esc(p.ffUid)}" placeholder="Free Fire UID"><input id="pg" value="${esc(p.ffName)}" placeholder="In-game name"><label class="m">Profile picture</label><input id="pf" type="file" accept="image/*">
+  <button onclick="saveP()">Save</button></div>`},
+ async history(){const m=await q('matches','created');const r=[];for(const x of m){const d=await D.doc(`matches/${x.id}/players/${U.uid}`).get();if(d.exists)r.push([x,d.data()])}
+  return `<h3>Match History</h3>${r.map(([x,d])=>`<div class="card">${esc(x.name)} <span class="tag">${x.status}</span><div class="m">Kills ${d.kills??'-'} · Position ${d.pos??'-'}</div></div>`).join('')||'<div class="m">Nothing yet</div>'}`},
+ rules:()=>'<div class="card"><h3>Rules</h3>No hacks or emulator cheating. Use your own Free Fire UID. Room ID is private. Admin decisions are final.</div>',
+ support:()=>'<div class="card"><h3>Support</h3>Contact the admins through the app or email your registered support address.</div>',
+ about:()=>'<div class="card"><h3>About</h3>PAK PAKISTAN TOURNAMENT — Free Fire tournaments for Pakistan.</div>',
+ privacy:()=>'<div class="card"><h3>Privacy Policy</h3>Your data is stored in Firebase and used only for tournament and payment operations.</div>',
+ terms:()=>'<div class="card"><h3>Terms</h3>Participation implies acceptance of rules. Fraud leads to a permanent ban.</div>',
+ settings:()=>'<div class="card"><button onclick="document.body.classList.toggle(\'light\')">Toggle Dark/Light</button><button class="r" onclick="A.signOut()">Logout</button></div>'
+};
+window.join=id=>run(async()=>{const p=(await D.doc('users/'+U.uid).get()).data();if(!/^\d{6,12}$/.test(p.ffUid))throw Error('Add your Free Fire UID in Profile first');
+ const mr=D.doc('matches/'+id);await D.runTransaction(async t=>{const m=(await t.get(mr)).data(),pl=D.doc(`matches/${id}/players/${U.uid}`);if((await t.get(pl)).exists)throw Error('Already joined');
+  if(m.joined>=m.slots)throw Error('Match full');if(p.wallet<m.fee)throw Error('Insufficient wallet balance');
+  t.set(pl,{uid:U.uid,ffName:p.ffName,ffUid:p.ffUid,fee:m.fee,slot:m.joined+1,at:TS()});t.update(mr,{joined:m.joined+1});if(m.fee>0)t.update(D.doc('users/'+U.uid),{wallet:p.wallet-m.fee})});
+ toast('Joined!');go('matches')});
+window.leave=(id,fee)=>run(async()=>{const m=(await D.doc('matches/'+id).get()).data();if(m.status!='upcoming')throw Error('Cannot cancel now');await D.doc(`matches/${id}/players/${U.uid}`).delete();toast('Left match. Ask admin for refund of Rs '+fee);go('matches')});
+window.room=id=>run(async()=>{const r=await D.doc(`matches/${id}/private/room`).get();toast(r.exists?`Room ${r.data().id} / Pass ${r.data().pass}`:'Room not published yet')});
+window.dep=()=>run(async()=>{const a=+$('#da').value,f=$('#df').files[0];if(!(a>0)||!f||!$('#dt').value)throw Error('Amount, transaction ID and screenshot required');
+ const r=S.ref(`shots/${U.uid}/${Date.now()}`);await r.put(f);await D.collection('deposits').add({uid:U.uid,email:U.email,amount:a,method:$('#dm').value,txn:$('#dt').value,shot:await r.getDownloadURL(),status:'pending',at:TS()});toast('Submitted for verification');go('wallet')});
+window.wdr=()=>run(async()=>{const a=+$('#wa').value,p=(await D.doc('users/'+U.uid).get()).data();if(!(a>0)||a>p.wallet||!$('#wn').value)throw Error('Invalid amount or balance');
+ await D.collection('withdrawals').add({uid:U.uid,email:U.email,amount:a,method:$('#wm').value,account:$('#wn').value,status:'pending',at:TS()});await D.doc('users/'+U.uid).update({wallet:p.wallet-a});toast('Request sent');go('wallet')});
+window.saveP=()=>run(async()=>{const u={name:$('#pn').value,ffUid:$('#pu').value,ffName:$('#pg').value},f=$('#pf').files[0];
+ if(f){const r=S.ref(`avatars/${U.uid}/p`);await r.put(f);u.photo=await r.getDownloadURL()}await D.doc('users/'+U.uid).update(u);toast('Saved')});
+
+/* ---------------- ADMIN ---------------- */
+function adminUI(){
+ const tabs=[['matches','Matches'],['payments','Payments'],['players','Players'],['news','Announce'],['admins','Admin Room'],['logs','Logs']].filter(t=>t[0]=='news'?perm('matches'):t[0]=='admins'||t[0]=='logs'?AD.role=='main':perm(t[0]));
+ app.innerHTML=`<header><span>🛡️</span><b>ADMIN · ${esc(AD.name)} (${AD.role})</b><button class="s" onclick="A.signOut()">Logout</button></header>
+ <main><div>${tabs.map(t=>`<button class="${atab==t[0]?'':'s'}" onclick="atab='${t[0]}';adminUI()">${t[1]}</button>`).join('')}</div><div id="ap">Loading…</div></main>`;
+ run(async()=>{$('#ap').innerHTML=await AV[atab]()});
+}
+const AV={
+ async matches(){const m=await q('matches','created');
+  return `<div class="card"><b>Create match</b><input id="mn" placeholder="Match name"><div class="g"><input id="md" type="date"><input id="mt" type="time"></div><div class="g"><select id="my"><option>Solo</option><option>Duo</option><option>Squad</option></select><select id="mp"><option>Bermuda</option><option>Purgatory</option><option>Kalahari</option><option>Alpine</option><option>Nexterra</option></select></div>
+  <div class="g"><input id="mf" type="number" placeholder="Entry fee (0=free)"><input id="mz" type="number" placeholder="Prize pool"></div><input id="ms" type="number" placeholder="Total slots"><button onclick="mk()">Create</button></div>
+  ${m.map(x=>`<div class="card"><b>${esc(x.name)}</b> <span class="tag">${x.status}</span> <span class="m">${x.joined}/${x.slots}</span><br>
+  <input id="r${x.id}" placeholder="Room ID" style="width:48%"><input id="w${x.id}" placeholder="Room password" style="width:48%"><button class="s" onclick="setRoom('${x.id}')">Set room</button>
+  <button onclick="st('${x.id}','live')">Start</button><button onclick="st('${x.id}','upcoming')">Upcoming</button><button class="s" onclick="resUI('${x.id}')">Results</button><button class="r" onclick="delM('${x.id}')">Delete</button><div id="x${x.id}"></div></div>`).join('')}`},
+ async payments(){const [d,w]=await Promise.all([q('deposits','at'),q('withdrawals','at')]);
+  return `<h3>Deposits</h3>${d.map(x=>`<div class="card">${esc(x.email)} Rs ${x.amount} ${x.method} txn ${esc(x.txn)} <span class="tag">${x.status}</span> <a href="${x.shot}" target="_blank" style="color:var(--c)">screenshot</a><br>${x.status=='pending'?`<button onclick="dec('deposits','${x.id}','${x.uid}',${x.amount},1)">Approve</button><button class="r" onclick="dec('deposits','${x.id}','${x.uid}',${x.amount},0)">Reject</button>`:''}</div>`).join('')}
+  <h3>Withdrawals</h3>${w.map(x=>`<div class="card">${esc(x.email)} Rs ${x.amount} ${x.method} → ${esc(x.account)} <span class="tag">${x.status}</span><br>${x.status=='pending'?`<button onclick="dec('withdrawals','${x.id}','${x.uid}',${x.amount},1)">Mark paid</button><button class="r" onclick="dec('withdrawals','${x.id}','${x.uid}',${x.amount},0)">Reject + refund</button>`:''}</div>`).join('')}`},
+ async players(){const u=(await D.collection('users').limit(200).get()).docs.map(d=>({id:d.id,...d.data()}));
+  return `<input id="ps" placeholder="Search name, email or UID" oninput="document.querySelectorAll('.pl').forEach(e=>e.style.display=e.dataset.s.includes(this.value.toLowerCase())?'':'none')">
+  ${u.map(x=>`<div class="card pl" data-s="${esc((x.name+x.email+x.ffUid).toLowerCase())}"><b>${esc(x.name)}</b> ${x.blocked?'<span class="tag">BLOCKED</span>':''}${x.verified?'✅':''}<div class="m">${esc(x.email)} · UID ${esc(x.ffUid)} · Kills ${x.kills} · Wallet Rs ${x.wallet}</div>
+  ${perm('players')?`<button onclick="pf('${x.id}',{verified:${!x.verified}})">${x.verified?'Unverify':'Verify UID'}</button><button class="r" onclick="pf('${x.id}',{blocked:${!x.blocked}})">${x.blocked?'Unblock':'Block'}</button>`:''}
+  ${perm('payments')?`<button class="s" onclick="adj('${x.id}')">Adjust wallet</button>`:''}</div>`).join('')}`},
+ async news(){const a=await q('announcements','at');return `<div class="card"><textarea id="an" placeholder="Announcement"></textarea><button onclick="ann()">Publish</button></div>${a.map(x=>`<div class="card">${esc(x.text)} <button class="r" onclick="D.doc('announcements/${x.id}').delete().then(()=>adminUI())">Delete</button></div>`).join('')}`},
+ async admins(){const a=await q('admins');
+  return `<div class="card"><b>Create new admin</b><input id="an1" placeholder="Full name"><input id="an2" placeholder="Username"><input id="an3" type="email" placeholder="Email"><input id="an4" type="password" placeholder="Temporary password (min 6)">
+  <div class="m">Permissions</div>${['matches','players','payments','results'].map(p=>`<label><input type="checkbox" class="pc" value="${p}" style="width:auto"> ${p}</label> `).join('')}<label><input type="checkbox" id="full" style="width:auto"> Full access (main)</label><br><button onclick="mkAdmin()">Create admin</button></div>
+  ${a.map(x=>`<div class="card"><b>${esc(x.name)}</b> @${esc(x.username||'')} <span class="tag">${x.role}</span><span class="tag">${x.active?'active':'inactive'}</span><div class="m">${esc(x.email)} · ${x.role=='main'?'all':(x.perms||[]).join(', ')}</div>
+  ${x.id!=U.uid?`<button class="s" onclick="D.doc('admins/${x.id}').update({active:${!x.active}}).then(()=>adminUI())">${x.active?'Deactivate':'Activate'}</button><button class="s" onclick="A.sendPasswordResetEmail('${x.email}').then(()=>toast('Reset email sent'))">Reset password</button><button class="r" onclick="D.doc('admins/${x.id}').delete().then(()=>adminUI())">Delete</button>`:''}</div>`).join('')}`},
+ async logs(){const l=await q('logs','at');return l.map(x=>`<div class="card">${esc(x.admin)}: ${esc(x.action)} <span class="m">${esc(x.detail)}</span></div>`).join('')||'None'}
+};
+const rf=f=>run(async()=>{await f();adminUI()});
+window.mk=()=>rf(async()=>{const m={name:$('#mn').value,date:$('#md').value,time:$('#mt').value,type:$('#my').value,map:$('#mp').value,fee:+$('#mf').value||0,prize:+$('#mz').value||0,slots:+$('#ms').value,joined:0,status:'upcoming',published:true,created:TS()};
+ if(!m.name||!m.date||!(m.slots>0))throw Error('Name, date and slots required');await D.collection('matches').add(m);log('create match',m.name)});
+window.setRoom=id=>rf(async()=>{await D.doc(`matches/${id}/private/room`).set({id:$('#r'+id).value,pass:$('#w'+id).value});log('set room',id)});
+window.st=(id,s)=>rf(async()=>{await D.doc('matches/'+id).update({status:s});log('match '+s,id)});
+window.delM=id=>confirm('Delete?')&&rf(async()=>{await D.doc('matches/'+id).delete();log('delete match',id)});
+window.resUI=id=>run(async()=>{const p=(await D.collection(`matches/${id}/players`).get()).docs.map(d=>({id:d.id,...d.data()}));
+ $('#x'+id).innerHTML=p.map(x=>`<div>${esc(x.ffName)} <input class="k${id}" data-u="${x.id}" type="number" placeholder="kills" style="width:70px"> <input class="p${id}" data-u="${x.id}" type="number" placeholder="pos" style="width:70px"> <input class="z${id}" data-u="${x.id}" type="number" placeholder="prize" style="width:80px"></div>`).join('')+`<button onclick="pub('${id}')">Publish results & pay prizes</button>`});
+window.pub=id=>rf(async()=>{const ks=[...document.querySelectorAll('.k'+id)];for(const k of ks){const u=k.dataset.u,pos=+document.querySelector(`.p${id}[data-u="${u}"]`).value,z=+document.querySelector(`.z${id}[data-u="${u}"]`).value||0,kl=+k.value||0;
+ await D.doc(`matches/${id}/players/${u}`).update({kills:kl,pos,prize:z});await D.doc('users/'+u).update({kills:INC(kl),played:INC(1),wins:INC(pos==1?1:0),...(z&&perm('payments')?{wallet:INC(z)}:{})})}
+ await D.doc('matches/'+id).update({status:'completed'});log('publish results',id)});
+window.dec=(c,id,uid,amt,ok)=>rf(async()=>{await D.doc(`${c}/${id}`).update({status:ok?'approved':'rejected',by:AD.name});
+ if(c=='deposits'&&ok)await D.doc('users/'+uid).update({wallet:INC(amt)});if(c=='withdrawals'&&!ok)await D.doc('users/'+uid).update({wallet:INC(amt)});log(c+(ok?' approve':' reject'),id+' Rs '+amt)});
+window.pf=(id,o)=>rf(async()=>{await D.doc('users/'+id).update(o);log('player update',id+JSON.stringify(o))});
+window.adj=id=>rf(async()=>{const a=+prompt('Amount (negative to deduct)');if(a){await D.doc('users/'+id).update({wallet:INC(a)});log('wallet adjust',id+' '+a)}});
+window.ann=()=>rf(async()=>{await D.collection('announcements').add({text:$('#an').value,at:TS()});log('announce')});
+window.mkAdmin=()=>rf(async()=>{const e=$('#an3').value.trim(),pw=$('#an4').value;if(AD.role!='main')throw Error('Only the main admin can do this');
+ const sec=firebase.apps.find(a=>a.name=='sec')||firebase.initializeApp(CFG,'sec');const c=await sec.auth().createUserWithEmailAndPassword(e,pw);await sec.auth().signOut();
+ const full=$('#full').checked,perms=[...document.querySelectorAll('.pc:checked')].map(x=>x.value);
+ await D.doc('admins/'+c.user.uid).set({name:$('#an1').value,username:$('#an2').value,email:e,role:full?'main':'sub',perms,active:true,created:TS()});log('create admin',e)});
+</script></body></html>
